@@ -7,16 +7,18 @@ notifications:
   email: false
 git:
   depth: 99999999
-sudo: required
-services:
-  - docker
-
+cache:
+  timeout: 1000
+  directories:
+    - downloads
 env:
-  DOCKER_IMAGE: staticfloat/julia_crossbuild:x64
+  global:
+    - BINARYBUILDER_DOWNLOADS_CACHE=downloads
+    - BINARYBUILDER_AUTOMATIC_APPLE=false
+sudo: required
 
 # Before anything else, get the latest versions of things
 before_script:
-  - docker pull $DOCKER_IMAGE
   - julia -e 'Pkg.clone("https://github.com/JuliaPackaging/BinaryProvider.jl")'
   - julia -e 'Pkg.clone("https://github.com/JuliaPackaging/BinaryBuilder.jl"); Pkg.build()'
 

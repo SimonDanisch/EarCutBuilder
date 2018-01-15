@@ -1,6 +1,8 @@
 using BinaryBuilder
+
+# These are the platforms built inside the wizard
 platforms = [
-  BinaryProvider.Linux(:i686, :glibc),
+    BinaryProvider.Linux(:i686, :glibc),
   BinaryProvider.Linux(:x86_64, :glibc),
   BinaryProvider.Linux(:aarch64, :glibc),
   BinaryProvider.Linux(:armv7l, :glibc),
@@ -9,10 +11,21 @@ platforms = [
   BinaryProvider.Windows(:i686),
   BinaryProvider.Windows(:x86_64)
 ]
+
+
+# If the user passed in a platform (or a few, comma-separated) on the
+# command-line, use that instead of our default platforms
+if length(ARGS) > 0
+    platforms = platform_key.(split(ARGS[1], ","))
+end
+info("Building for $(join(triplet.(platforms), ", "))")
+
+# Collection of sources required to build Earcut
 sources = [
-  "https://github.com/JuliaGeometry/EarCut.jl.git" =>
-"4db9500d402151d19b831983a6de94fdeb9435ce",
+    "https://github.com/JuliaGeometry/EarCut.jl.git" =>
+    "bc89e3d30df5c40bf75b70ab8882636bd3554c61",
 ]
+
 script = raw"""
 cd $WORKSPACE/srcdir
 cd EarCut.jl/deps/
@@ -20,27 +33,13 @@ g++ -c -fPIC -std=c++11 cwrapper.cpp -o earcut.o
 g++ -shared -o earcut.so earcut.o
 mv earcut.so $DESTDIR
 exit
-if [ $target = "x86_64-w64-mingw32" ]; then
-cd $WORKSPACE/srcdir
-g++ -c -fPIC -std=c++11 cwrapper.cpp -o earcut.o
-g++ -shared -o earcut.dll earcut.o
-mv earcut.dll $DESTDIR
-exit
-fi
-if [ $target = "x86_64-w64-mingw32" ]; then
-cd $WORKSPACE/srcdir
-ls
-cd EarCut.jl/
-ls
-cd deps/
-ls
-g++ -c -fPIC -std=c++11 cwrapper.cpp -o earcut.o
-g++ -shared -o earcut.dll earcut.o
-mv earcut.dll  $DESTDIR
-exit
-fi
+
 """
+
 products = prefix -> [
-	LibraryProduct(prefix,"earcut")
+    LibraryProduct(prefix,"earcut")
 ]
-autobuild(pwd(), "EarCut", platforms, sources, script, products)
+
+
+# Build the given platforms using the given sources
+hashes = autobuild(pwd(), "Earcut", platforms, sources, script, products)
