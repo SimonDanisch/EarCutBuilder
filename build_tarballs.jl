@@ -30,10 +30,20 @@ script = raw"""
 cd $WORKSPACE/srcdir
 cd EarCut.jl/deps/
 g++ -c -fPIC -std=c++11 cwrapper.cpp -o earcut.o
-g++ -shared -o earcut.so earcut.o
-mv earcut.so $DESTDIR
-exit
 
+if [[ ${target} == *-mingw32 ]]; then
+    mkdir ${DESTDIR}/bin
+    g++ -shared -o ${DESTDIR}/bin/earcut.dll earcut.o;
+else
+    mkdir ${DESTDIR}/lib
+    if [[ ${target} == *-darwin* ]]; then
+        g++ -shared -o ${DESTDIR}/lib/earcut.dylib earcut.o;
+    else
+        g++ -shared -o ${DESTDIR}/lib/earcut.so earcut.o;
+    fi
+fi
+
+exit
 """
 
 products = prefix -> [
