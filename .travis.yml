@@ -31,5 +31,5 @@ deploy:
   file: products/*
   skip_cleanup: true
   on:
-    repo: SimonDanisch/EarCutDeps
+    repo: SimonDanisch/EarCutBuilder
     tags: true
