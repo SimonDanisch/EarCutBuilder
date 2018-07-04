@@ -1,4 +1,4 @@
-#include "earcut/earcut.hpp"
+#include "earcut.hpp"
 template <typename T> using Polygon = std::vector<std::vector<T>>;
 struct Arrayui32{
     uint32_t* data;

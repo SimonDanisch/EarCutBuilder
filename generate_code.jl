@@ -52,7 +52,7 @@ types = [
     (Int64, "int64_t", "i64"),
     (Int32, "int32_t", "i32")
 ]
-dir(files...) = joinpath(dirname(@__FILE__), dir...)
+dir(files...) = joinpath(dirname(@__FILE__), files...)
 isdir(dir("products")) || mkdir(dir("products"))
 
 jlfile = open(dir("products", "cwrapper.jl"), "w")
@@ -68,9 +68,8 @@ if isempty(lib)
 end
 """)
 
-header = joinpath("earcut", "earcut.hpp")
 println(cfile, """
-#include "$header"
+#include "earcut.hpp"
 template <typename T> using Polygon = std::vector<std::vector<T>>;
 struct Arrayui32{
     uint32_t* data;
