@@ -23,7 +23,7 @@ template <typename N = uint32_t>
 class Earcut {
 public:
     std::vector<N> indices;
-    N vertices = 0;
+    std::size_t vertices = 0;
 
     template <typename Polygon>
     void operator()(const Polygon& points);
@@ -78,13 +78,13 @@ private:
     bool locallyInside(const Node* a, const Node* b);
     bool middleInside(const Node* a, const Node* b);
     Node* splitPolygon(Node* a, Node* b);
-    template <typename Point> Node* insertNode(N i, const Point& p, Node* last);
+    template <typename Point> Node* insertNode(std::size_t i, const Point& p, Node* last);
     void removeNode(Node* p);
 
     bool hashing;
     double minX, maxX;
     double minY, maxY;
-    double size;
+    double inv_size = 0;
 
     template <typename T, typename Alloc = std::allocator<T>>
     class ObjectPool {
@@ -99,16 +99,18 @@ private:
         template <typename... Args>
         T* construct(Args&&... args) {
             if (currentIndex >= blockSize) {
-                currentBlock = alloc.allocate(blockSize);
+                currentBlock = alloc_traits::allocate(alloc, blockSize);
                 allocations.emplace_back(currentBlock);
                 currentIndex = 0;
             }
             T* object = &currentBlock[currentIndex++];
-            alloc.construct(object, std::forward<Args>(args)...);
+            alloc_traits::construct(alloc, object, std::forward<Args>(args)...);
             return object;
         }
         void reset(std::size_t newBlockSize) {
-            for (auto allocation : allocations) alloc.deallocate(allocation, blockSize);
+            for (auto allocation : allocations) {
+                alloc_traits::deallocate(alloc, allocation, blockSize);
+            }
             allocations.clear();
             blockSize = std::max<std::size_t>(1, newBlockSize);
             currentBlock = nullptr;
@@ -121,6 +123,7 @@ private:
         std::size_t blockSize = 1;
         std::vector<T*> allocations;
         Alloc alloc;
+        typedef typename std::allocator_traits<Alloc> alloc_traits;
     };
     ObjectPool<Node> nodes;
 };
@@ -135,12 +138,11 @@ void Earcut<N>::operator()(const Polygon& points) {
 
     double x;
     double y;
-    size = 0;
     int threshold = 80;
     std::size_t len = 0;
 
     for (size_t i = 0; threshold >= 0 && i < points.size(); i++) {
-        threshold -= points[i].size();
+        threshold -= static_cast<int>(points[i].size());
         len += points[i].size();
     }
 
@@ -149,7 +151,7 @@ void Earcut<N>::operator()(const Polygon& points) {
     indices.reserve(len + points[0].size());
 
     Node* outerNode = linkedList(points[0], true);
-    if (!outerNode) return;
+    if (!outerNode || outerNode->prev == outerNode->next) return;
 
     if (points.size() > 1) outerNode = eliminateHoles(points, outerNode);
 
@@ -157,20 +159,21 @@ void Earcut<N>::operator()(const Polygon& points) {
     hashing = threshold < 0;
     if (hashing) {
         Node* p = outerNode->next;
-        minX = maxX = p->x;
-        minY = maxY = p->y;
+        minX = maxX = outerNode->x;
+        minY = maxY = outerNode->y;
         do {
             x = p->x;
             y = p->y;
-            minX = (std::min)(minX, x);
-            minY = (std::min)(minY, y);
-            maxX = (std::max)(maxX, x);
-            maxY = (std::max)(maxY, y);
+            minX = std::min<double>(minX, x);
+            minY = std::min<double>(minY, y);
+            maxX = std::max<double>(maxX, x);
+            maxY = std::max<double>(maxY, y);
             p = p->next;
         } while (p != outerNode);
 
         // minX, minY and size are later used to transform coords into integers for z-order calculation
-        size = (std::max)(maxX - minX, maxY - minY);
+        inv_size = std::max<double>(maxX - minX, maxY - minY);
+        inv_size = inv_size != .0 ? (1. / inv_size) : .0;
     }
 
     earcutLinked(outerNode);
@@ -184,15 +187,14 @@ typename Earcut<N>::Node*
 Earcut<N>::linkedList(const Ring& points, const bool clockwise) {
     using Point = typename Ring::value_type;
     double sum = 0;
-    const int len = static_cast<int>(points.size());
-    int i, j;
-    Point p1, p2;
+    const std::size_t len = points.size();
+    std::size_t i, j;
     Node* last = nullptr;
 
     // calculate original winding order of a polygon ring
-    for (i = 0, j = len - 1; i < len; j = i++) {
-        p1 = points[i];
-        p2 = points[j];
+    for (i = 0, j = len > 0 ? len - 1 : 0; i < len; j = i++) {
+        const auto& p1 = points[i];
+        const auto& p2 = points[j];
         const double p20 = util::nth<0, Point>::get(p2);
         const double p10 = util::nth<0, Point>::get(p1);
         const double p11 = util::nth<1, Point>::get(p1);
@@ -204,7 +206,7 @@ Earcut<N>::linkedList(const Ring& points, const bool clockwise) {
     if (clockwise == (sum > 0)) {
         for (i = 0; i < len; i++) last = insertNode(vertices + i, points[i], last);
     } else {
-        for (i = len - 1; i >= 0; i--) last = insertNode(vertices + i, points[i], last);
+        for (i = len; i-- > 0;) last = insertNode(vertices + i, points[i], last);
     }
 
     if (last && equals(last, last->next)) {
@@ -232,7 +234,7 @@ Earcut<N>::filterPoints(Node* start, Node* end) {
             removeNode(p);
             p = end = p->prev;
 
-            if (p == p->next) return nullptr;
+            if (p == p->next) break;
             again = true;
 
         } else {
@@ -328,10 +330,10 @@ bool Earcut<N>::isEarHashed(Node* ear) {
     if (area(a, b, c) >= 0) return false; // reflex, can't be an ear
 
     // triangle bbox; min & max are calculated like this for speed
-    const double minTX = (std::min)(a->x, (std::min)(b->x, c->x));
-    const double minTY = (std::min)(a->y, (std::min)(b->y, c->y));
-    const double maxTX = (std::max)(a->x, (std::max)(b->x, c->x));
-    const double maxTY = (std::max)(a->y, (std::max)(b->y, c->y));
+    const double minTX = std::min<double>(a->x, std::min<double>(b->x, c->x));
+    const double minTY = std::min<double>(a->y, std::min<double>(b->y, c->y));
+    const double maxTX = std::max<double>(a->x, std::max<double>(b->x, c->x));
+    const double maxTY = std::max<double>(a->y, std::max<double>(b->y, c->y));
 
     // z-order range for the current triangle bbox;
     const int32_t minZ = zOrder(minTX, minTY);
@@ -428,7 +430,7 @@ Earcut<N>::eliminateHoles(const Polygon& points, Node* outerNode) {
             queue.push_back(getLeftmost(list));
         }
     }
-    std::sort(queue.begin(), queue.end(), [this](const Node* a, const Node* b) {
+    std::sort(queue.begin(), queue.end(), [](const Node* a, const Node* b) {
         return a->x < b->x;
     });
 
@@ -464,7 +466,7 @@ Earcut<N>::findHoleBridge(Node* hole, Node* outerNode) {
     // find a segment intersected by a ray from the hole's leftmost Vertex to the left;
     // segment's endpoint with lesser x will be potential connection Vertex
     do {
-        if (hy <= p->y && hy >= p->next->y) {
+        if (hy <= p->y && hy >= p->next->y && p->next->y != p->y) {
           double x = p->x + (hy - p->y) * (p->next->x - p->x) / (p->next->y - p->y);
           if (x <= hx && x > qx) {
             qx = x;
@@ -495,7 +497,7 @@ Earcut<N>::findHoleBridge(Node* hole, Node* outerNode) {
     double my = m->y;
 
     while (p != stop) {
-        if (hx >= p->x && p->x >= mx &&
+        if (hx >= p->x && p->x >= mx && hx != p->x &&
             pointInTriangle(hy < my ? hx : qx, hy, mx, my, hy < my ? qx : hx, hy, p->x, p->y)) {
 
             tanCur = std::abs(hy - p->y) / (hx - p->x); // tangential
@@ -544,7 +546,7 @@ Earcut<N>::sortLinked(Node* list) {
     int i, numMerges, pSize, qSize;
     int inSize = 1;
 
-    while (true) {
+    for (;;) {
         p = list;
         list = nullptr;
         tail = nullptr;
@@ -604,8 +606,8 @@ Earcut<N>::sortLinked(Node* list) {
 template <typename N>
 int32_t Earcut<N>::zOrder(const double x_, const double y_) {
     // coords are transformed into non-negative 15-bit integer range
-    int32_t x = static_cast<int32_t>(32767.0 * (x_ - minX) / size);
-    int32_t y = static_cast<int32_t>(32767.0 * (y_ - minY) / size);
+    int32_t x = static_cast<int32_t>(32767.0 * (x_ - minX) * inv_size);
+    int32_t y = static_cast<int32_t>(32767.0 * (y_ - minY) * inv_size);
 
     x = (x | (x << 8)) & 0x00FF00FF;
     x = (x | (x << 4)) & 0x0F0F0F0F;
@@ -627,7 +629,8 @@ Earcut<N>::getLeftmost(Node* start) {
     Node* p = start;
     Node* leftmost = start;
     do {
-        if (p->x < leftmost->x) leftmost = p;
+        if (p->x < leftmost->x || (p->x == leftmost->x && p->y < leftmost->y))
+            leftmost = p;
         p = p->next;
     } while (p != start);
 
@@ -699,7 +702,8 @@ bool Earcut<N>::middleInside(const Node* a, const Node* b) {
     double px = (a->x + b->x) / 2;
     double py = (a->y + b->y) / 2;
     do {
-        if (((p->y > py) != (p->next->y > py)) && (px < (p->next->x - p->x) * (py - p->y) / (p->next->y - p->y) + p->x))
+        if (((p->y > py) != (p->next->y > py)) && p->next->y != p->y &&
+                (px < (p->next->x - p->x) * (py - p->y) / (p->next->y - p->y) + p->x))
             inside = !inside;
         p = p->next;
     } while (p != a);
@@ -736,8 +740,8 @@ Earcut<N>::splitPolygon(Node* a, Node* b) {
 // create a node and util::optionally link it with previous one (in a circular doubly linked list)
 template <typename N> template <typename Point>
 typename Earcut<N>::Node*
-Earcut<N>::insertNode(N i, const Point& pt, Node* last) {
-    Node* p = nodes.construct(i, util::nth<0, Point>::get(pt), util::nth<1, Point>::get(pt));
+Earcut<N>::insertNode(std::size_t i, const Point& pt, Node* last) {
+    Node* p = nodes.construct(static_cast<N>(i), util::nth<0, Point>::get(pt), util::nth<1, Point>::get(pt));
 
     if (!last) {
         p->prev = p;
@@ -767,6 +771,6 @@ template <typename N = uint32_t, typename Polygon>
 std::vector<N> earcut(const Polygon& poly) {
     mapbox::detail::Earcut<N> earcut;
     earcut(poly);
-    return earcut.indices;
+    return std::move(earcut.indices);
 }
 }

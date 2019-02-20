@@ -3,7 +3,7 @@
 using BinaryBuilder
 
 name = "EarCut"
-version = v"1.0.0"
+version = v"2.1.5"
 # Collection of sources required to build Clipper
 sources = [
     "https://github.com/SimonDanisch/EarCutBuilder.git" =>
