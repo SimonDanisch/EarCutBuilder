@@ -18,7 +18,7 @@ ${CXX} -c -fPIC -std=c++11 cwrapper.cpp -o earcut.o
 libdir="lib"
 if [[ ${target} == *-mingw32 ]]; then     libdir="bin"; else     libdir="lib"; fi
 mkdir ${prefix}/${libdir}
-${CXX} -shared -o ${prefix}/${libdir}/earcut.${dlext} earcut.o
+${CXX} $LDFLAGS -shared -o ${prefix}/${libdir}/earcut.${dlext} earcut.o
 exit
 """
 
