@@ -7,7 +7,7 @@ version = v"2.1.5"
 # Collection of sources required to build Clipper
 sources = [
     "https://github.com/SimonDanisch/EarCutBuilder.git" =>
-    "af2f5e56e963b87b045eadb15012a95d40475b70",
+    "cfa4233e26ac785a89954a72b4e2e84312b389c2",
 ]
 
 # Bash recipe for building across all platforms

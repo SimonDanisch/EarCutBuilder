@@ -1,8 +1,8 @@
 language: julia
 os:
-- linux
+  - linux
 julia:
-- 0.6
+  - 1.0
 notifications:
   email: false
 git:
@@ -10,18 +10,19 @@ git:
 cache:
   timeout: 1000
   directories:
-  - downloads
+    - downloads
 env:
   global:
-  - BINARYBUILDER_DOWNLOADS_CACHE=downloads
-  - BINARYBUILDER_AUTOMATIC_APPLE=true
+    - BINARYBUILDER_DOWNLOADS_CACHE=downloads
+    - BINARYBUILDER_AUTOMATIC_APPLE=true
 sudo: required
+# Before anything else, get the latest versions of things
 before_script:
-- julia -e 'Pkg.clone("https://github.com/JuliaPackaging/BinaryProvider.jl")'
-- julia -e 'Pkg.clone("https://github.com/JuliaPackaging/BinaryBuilder.jl"); Pkg.build()'
+  - julia -e 'using Pkg; pkg"add BinaryBuilder BinaryProvider"'
+
 script:
-- julia generate_code.jl
-- julia build_tarballs.jl
+  - julia generate_code.jl
+  - julia build_tarballs.jl
 
 deploy:
   provider: releases
